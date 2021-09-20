@@ -3,6 +3,7 @@
 #include "src/makeNumber.h"
 #include "src/debounceClass.h"
 #include "src/macros.h"
+#include "src/stateMachineClass.h"
 #include <Wire.h>
 
 const int nInputModules = 4 ; // make me variable in setup.
@@ -13,12 +14,16 @@ const int nInputs = 64 ;
 #define pullUpRegA	0x0C
 #define mcpAddress  0x20
 
-enum modes
+const int pointsPerStreet = 16 ;
+
+enum modeHandlingStates
 {
-    IDLE ,
-    TEACH_IN_STREETS ,
-    TEACH_IN_ACCESSORIES ,
-} mode ;
+    modeHandlingIDLE,
+    readButtons,
+    layStreet,
+    teachinPoints,
+    teachinStreets
+} ;
 
 enum buttonStates
 {
@@ -38,8 +43,11 @@ uint8_t firstButton  = 0xFF ;
 uint8_t secondButton = 0xFF ;
 uint8_t lastPressedButton = 0xFF ;
 uint8_t prevPressedButton = 0xFF ;
+uint8_t buttonPressed = false ;
 uint8_t controlState ;
 uint8_t lastPressedInput ;
+uint8_t returnCode ;
+uint16_t street[ pointsPerStreet ] ;
 
 void debounceInputs()
 {
@@ -65,53 +73,15 @@ void debounceInputs()
     END_REPEAT
 }
 
-
-void control()
-{
-    static bool discardRising ;
-    static uint32_t prevTime = 0;
-    uint32_t currentTime = millis() ;
-    controlState = controlButton.getState() ;
-    
-    if( controlState == FALLING )
-    {
-        prevTime = currentTime ;
-        discardRising = false ;
-    }
-    
-    if( controlState == RISING && discardRising == false )    // if button is released before 2 seconds...
-    {
-        if( mode == IDLE ) mode = TEACH_IN_STREETS ;
-        else               mode = IDLE ;
-    }
-    
-    if( controlState == LOW && currentTime - prevTime >= 2000 ) // if button is pressed for 2 seconds....
-    {
-        discardRising = true ;                                  // discard rising flank of button
-        
-        if( mode == IDLE ) mode = TEACH_IN_ACCESSORIES ;
-    }
-}
-
-void teachInAccessories()
-{
-}
-
-void readButtons()
+void readButtons() // I NEED A NEW NAME BECAUSE THIS NAME IS USED FOR A CONSTANT
 {    
     for( int pin = 0 ; pin < nInputs ; pin ++ )
     {
-        uint8_t state = inputs[pin].getState() ;
-        // if( state == FALLING || state == RISING ) 
-        // {
-        //     clear() ;
-        //     print(F("BUTTON: ")) ;
-        //     printNumberU(pin,1);
-        //     if( state == FALLING ) printNumber(0,1);
-        //     if( state ==  RISING ) printNumber(1,1);
-        // }
+        uint8_t state = inputs[pin].getState() ; // checks if any of the debounced I2C inputs has changed state
+
         if( state == FALLING )
         {
+            buttonPressed = true ;
             lastPressedButton = pin ; // important for teaching in points
         }
         
@@ -138,11 +108,43 @@ void readButtons()
 }
 
 
-void setStreets()
+bool setStreets()
 {
-    if( pointsAreSet == false )
+    static uint8_t index = 0 ;
+
+    REPEAT_MS( pointInterval ) ;
+    if( street[index] == 0xFFFF )                       // if address == 0xFFFF, we have set the last point
     {
-        
+        quit ;
+        index = 0 ;
+        return true ;
+    }
+    else
+    {
+        if( ++ index == pointsPerStreet ) goto quit ;   // if we have set 16 points (max) we are also done.
+
+        uint16_t address =  street[index] & 0x03FF ;    
+        uint8_t  state   =  street[index] >> 15 ;
+        XpressNet.SetTrntPos( address, state, 1  ) ;       // set the point
+        // delay(20);
+        // XpressNet.SetTrntPos( address, state, 0  ) ;     // this may be needed due to buggy library "feature"
+    }
+    END_REPEAT
+
+    return false ;
+}
+
+void notifyXNetTrnt(uint16_t Address, uint8_t data)
+{
+    if( sm.getState() == teachinPoints )            // if we are teaching points we need to store incomming address and state in EEPROM
+    {
+        // storePoint( Address | (data << 15) ) ;
+    }
+
+    if( sm.getState() == readButtons )              // if we are in Idle mode, only update LED's, should work for occupance detectors as well as points
+    {
+        // uint8_t IO = getIO( Address ) ;          // fetch which IO belongs to this point from EEPROM
+        // mcpWrite( IO + 1, state ) ;                  // than update the LED (the IO behind in the input)
     }
 }
 
@@ -158,12 +160,15 @@ StateFunction( readButtons )
     }
     if( sm.onState() )
     {
-        if( controlState == FALLING 
-        || (firstButton != 0xFF && secondButton != 0xFF) ) sm.exit() ;
+        if( controlState == FALLING ) sm.setTimeout( 1000 ) ;
+
+        if((controlState == LOW && sm.timeout())
+        || (controlState == RISING)                                      // if control button is pressed we are going to store something
+        || (firstButton != 0xFF && secondButton != 0xFF) ) sm.exit() ;  // if 2 buttons are pressed we are going to set points
     }
     if( sm.exitState() )
     {
-        // calculate eeadress here in case we need to set points
+
     }
     return sm.endState() ;
 }
@@ -173,6 +178,7 @@ StateFunction( layStreet )
     if( sm.entryState() )
     {
         // calculate eeprom address and initialize setting street. 
+        // getPoints( &street, firstButton, secondButton ) ;        // spoons EEPROM memory into this array 'street'
     }
     if( sm.onState() )
     {
@@ -185,6 +191,7 @@ StateFunction( layStreet )
     return sm.endState() ;
 }
 
+
 StateFunction( teachinPoints )
 {
     if( sm.entryState() )
@@ -193,7 +200,7 @@ StateFunction( teachinPoints )
     }
     if( sm.onState() )                              // the xpressnet notify funcion now stores information
     {
-        if( controlState == FALLING ) sm.exit() ;
+        if( controlState == FALLING ) sm.exit() ; // if control button is pressed again -> exit
     }
     if( sm.exitState() )
     {
@@ -201,6 +208,7 @@ StateFunction( teachinPoints )
     }
     return sm.endState() ;
 }
+
 
 StateFunction( teachinStreets )
 {
@@ -227,9 +235,9 @@ extern uint8_t modeHandling()
     STATE_MACHINE_BEGIN
 
     State(readButtons) {
-        sm.nextState( teachinPoints, 0 ) ;
-        sm.nextState( layStreet, 0 ) ;
-        sm.nextState( teachinStreets, 0 ) ; }
+        if( constrolState == RISING ) sm.nextState( teachinPoints, 0 ) ;    // short press control button
+        if( constrolState ==    LOW ) sm.nextState( layStreet, 0 ) ;        //  long press control button
+        else                          sm.nextState( teachinStreets, 0 ) ; } // 2 NX buttons are pressed
 
     State(layStreet) {
         sm.nextState( readButtons, 0 ) ; }
