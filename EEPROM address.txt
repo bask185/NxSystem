@@ -1,0 +1,24 @@
+max 64 points or occupance detectors, 
+2 bytes per item
+needed: 128 bytes 0x80
+IO number is linked to physical address
+
+streets 16 points per street max,
+2 bytes per point (state included)
+nAmount of street 128
+needed: 4096 bytes or 0x1000
+address is dynamically allocated
+
+It is needed to dynamically alocate memory to point streets.
+2 inputs numbers must be linked to an address. There is no correlation between input numbers and eeprom address
+Therefor we need a special part in memory to store the links
+
+2 bytes for 2 buttons = 1 street
+2 bytes for eeprom address
+nAmount of street 128
+needed: 512 bytes or 0x200
+
+ITEM		address
+accessoires 	0x0000 - 0x007F  (0x0080 bytes)
+streets		0x0080 - 0x107F  (0x1000 bytes)
+mem links	0x1080 - 0x127F  (0x0200 bytes)
