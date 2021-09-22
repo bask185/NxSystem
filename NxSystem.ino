@@ -16,14 +16,6 @@ const int nInputs = 64 ;
 
 const int pointsPerStreet = 16 ;
 
-enum modeHandlingStates
-{
-    modeHandlingIDLE,
-    readButtons,
-    layStreet,
-    teachinPoints,
-    teachinStreets
-} ;
 
 enum buttonStates
 {
@@ -63,7 +55,7 @@ void debounceInputs()
         Wire.requestFrom( mcpAddress + module, 2 ) ;             // get port A and B
         uint16_t input = (Wire.read() << 8) | Wire.read() ;
         
-        for( int pin = 0 ; pin < 16 ; pin ++ )
+        for( int pin = 0 ; pin < 16 ; pin += 2 )
         {
             bool state = input >> pin ;
             inputs[ nInputModules * 16 + pin ].debounce( state ) ; // deboune all 64 input pins
@@ -73,7 +65,7 @@ void debounceInputs()
     END_REPEAT
 }
 
-void readButtons() // I NEED A NEW NAME BECAUSE THIS NAME IS USED FOR A CONSTANT
+void readButtons()
 {    
     for( int pin = 0 ; pin < nInputs ; pin ++ )
     {
@@ -134,11 +126,13 @@ bool setStreets()
     return false ;
 }
 
+
+/* XPRESSNET EVENT */
 void notifyXNetTrnt(uint16_t Address, uint8_t data)
 {
     if( sm.getState() == teachinPoints )            // if we are teaching points we need to store incomming address and state in EEPROM
     {
-        // storePoint( Address | (data << 15) ) ;
+        // storePoint( lastPressedButton, Address | (data << 15) ) ;
     }
 
     if( sm.getState() == readButtons )              // if we are in Idle mode, only update LED's, should work for occupance detectors as well as points
@@ -148,108 +142,20 @@ void notifyXNetTrnt(uint16_t Address, uint8_t data)
     }
 }
 
-
-StateMachine sm ;
-
-// STATE FUNCTIONS
-StateFunction( readButtons )
+/* INPUT BUTTON IS PRESSED */
+void inputEvent( uint8_t pinNumber )
 {
-    if( sm.entryState() )
-    {
-        
-    }
-    if( sm.onState() )
-    {
-        if( controlState == FALLING ) sm.setTimeout( 1000 ) ;
-
-        if((controlState == LOW && sm.timeout())
-        || (controlState == RISING)                                      // if control button is pressed we are going to store something
-        || (firstButton != 0xFF && secondButton != 0xFF) ) sm.exit() ;  // if 2 buttons are pressed we are going to set points
-    }
-    if( sm.exitState() )
-    {
-
-    }
-    return sm.endState() ;
-}
-
-StateFunction( layStreet )
-{
-    if( sm.entryState() )
-    {
-        // calculate eeprom address and initialize setting street. 
-        // getPoints( &street, firstButton, secondButton ) ;        // spoons EEPROM memory into this array 'street'
-    }
-    if( sm.onState() )
-    {
-        if( setStreets() ) sm.exit() ; // set streets and exit when done
-    }
-    if( sm.exitState() )
-    {
-        
-    }
-    return sm.endState() ;
+    
 }
 
 
-StateFunction( teachinPoints )
+
+/* CONTROL BUTTON IS PRESSED */
+void controlButtonEvent()
 {
-    if( sm.entryState() )
-    {
-        
-    }
-    if( sm.onState() )                              // the xpressnet notify funcion now stores information
-    {
-        if( controlState == FALLING ) sm.exit() ; // if control button is pressed again -> exit
-    }
-    if( sm.exitState() )
-    {
-        
-    }
-    return sm.endState() ;
+    
 }
 
-
-StateFunction( teachinStreets )
-{
-    if( sm.entryState() )
-    {
-        
-    }
-    if( sm.onState() )
-    {
-        
-        sm.exit() ;
-    }
-    if( sm.exitState() )
-    {
-        
-    }
-    return sm.endState() ;
-}
-
-
-// STATE MACHINE
-extern uint8_t modeHandling()
-{
-    STATE_MACHINE_BEGIN
-
-    State(readButtons) {
-        if( constrolState == RISING ) sm.nextState( teachinPoints, 0 ) ;    // short press control button
-        if( constrolState ==    LOW ) sm.nextState( layStreet, 0 ) ;        //  long press control button
-        else                          sm.nextState( teachinStreets, 0 ) ; } // 2 NX buttons are pressed
-
-    State(layStreet) {
-        sm.nextState( readButtons, 0 ) ; }
-
-    State(teachinPoints) {
-        sm.nextState( readButtons, 0 ) ; }
-
-    State(teachinStreets) {
-        sm.nextState( readButtons, 0 ) ; }
-
-    STATE_MACHINE_END
-}
 
 void setup()
 {
@@ -262,7 +168,20 @@ void loop()
 {
     debounceInputs() ;
     readButtons() ;
-    modeHandling() ;
     
     XpressNet.update() ;
 }
+
+
+/*
+void updateLED( uint8_t number )
+void coupleDCCtoNumber( uint16_t dccAddress ,uint8_t lastPressedNumber)
+void addDetectorToStreet( uint16_t detector )
+void addPointToStreet()
+void setNewStreet( uint8_t firstNumber, uint8_t secondNumber )
+void setStreet()
+void updateMode() 
+
+
+
+*/

@@ -3,12 +3,16 @@ max 64 points or occupance detectors,
 needed: 128 bytes 0x80
 IO number is linked to physical address
 
+
+
+/* STREETS */
 streets 16 points per street max,
-2 bytes per point (state included)
+2 bytes per point (state included in bit 15)
 nAmount of street 128
 needed: 4096 bytes or 0x1000
-address is dynamically allocated
+address is dynamically allocated in the memory links
 
+/*  MEMORY LINKS  */
 It is needed to dynamically alocate memory to point streets.
 2 inputs numbers must be linked to an address. There is no correlation between input numbers and eeprom address
 Therefor we need a special part in memory to store the links
@@ -18,7 +22,68 @@ Therefor we need a special part in memory to store the links
 nAmount of street 128
 needed: 512 bytes or 0x200
 
-ITEM		address
-accessoires 	0x0000 - 0x007F  (0x0080 bytes)
-streets		0x0080 - 0x107F  (0x1000 bytes)
-mem links	0x1080 - 0x127F  (0x0200 bytes)
+address can be found in a for loop in where both the first and second button numbers are compared
+with those in EEPROM. If a match is found, the latter 2 bytes which holds the address of the street
+must be returned
+
+ITEM		        addresses
+accessories 	0x0000 - 0x007F  (0x0080 bytes)
+streets		    0x0080 - 0x107F  (0x1000 bytes)
+mem links	    0x1080 - 0x127F  (0x0200 bytes)
+
+
+/* THE WORKS */
+
+Setting a street:
+If 2 buttons are pressed, the controller needs to crossreference the input numbers to numbers in the memory links
+when the first address of a street is found, all points are to be set. Whenever an Xnet instruction is sent in order
+to set a point, the function notifyXnetTrnt also must be called (if the library does not do this), than it is also needed
+to find the correct IO so the controller knows which LED to set alongside the point.
+
+Teach in points:
+This is a mode which is triggered by a long press on the control button. A red LED should blink with a slow
+interval of about 2 seconds. In this mode a user can set select a point by pressing it's button with a needle. 
+Than a multimaus or similar device  may set the point, that address AND that state will be stored under the last pressed 
+button number. These are 2 bytes. The first bit (15) holds the state while the latter 10 bits hold the address. 
+The eeprom address is correlated to the pressed button. Every possible button (64x) has it's own 2 bytes in EEPROM, 
+whether they are used or not. The mode can be exited with a short press on the control button.
+
+The detector module will work on the exact same way as points, because I will be using the higher DCC point addresses
+for detectors. Teaching in detectors can be done by pressing a button the panel with a needle followed by a placement
+of vehicle on the tracks (which triggers a turnout transmission). This operation is the exact same as the above with as
+difference that the multimaus is replaced by a detector module.
+
+
+Teach in Streets:
+This is also a mode which can be triggered with a short press on the control button. A red LED should blink at around 1Hz
+to indicate that button presses will be recorded. Up to 16 points per street can be tought in per street. When two buttons
+are pressed a new street is selected. The beginning EEPROM address must be dynamically allocated as there are more
+button combinations than that there is memory available. After a begin and end button is pressed, the user can pick
+those points by pressing on their buttons with a needle. Both the begin and end buttons are crossreferenced with
+the memory links. If the combination is not yet found, memory may be allocated to store the new street in.
+
+In the streets, the points are stored with their input numbers as well as with the states on bit 7. With the input number
+the physical DCC address can be found easily as the input number is corelated to a certain place in memory where this
+address lies.
+
+It is important that the points are taught in first. When a button is pressed, there will be a check if this buttons
+contains a valid DCC address. If there is no address found, the controller knows that the pressed button is a start/stop
+button. If the controller does find an address, it knows it must add a point to the street.
+
+/* detector */
+As of now, a detector is nothing more than a point with a relative high address. It's current purpose is to highlight
+an LED on the control panel. The high address could be used to distinct a detector from a point. There is currently
+no plan to incorporate detectors in the streets. They could perhaps be used to free up the laid street. The could
+also be used to prevent a street from laying in if a certain taught-in detector is already made when 2 buttons are
+pressed. However this is depended if wagons are detected or not, it would be needed to lay a street to a bunch of
+cars.
+
+Brainfart. Perhaps that a detector can be added to the system without it having it's own hexagon and this without 
+panel IO. This would allow a user to detect a street of points and to use it as a measure to lock a street until that
+street is freed up.
+
+During teachin in a DCC address of a detector should be linked to the street. I think it is a good idea, to just use one
+detector at first. When one is teaching in a street, one can manually trigger a detector to add it in the street.
+
+The controller at that point can use the detector from laying a street in the first place, and the street may be 
+freed up when the detector is freed.
