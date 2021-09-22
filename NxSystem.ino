@@ -1,29 +1,24 @@
 #include "src/XpressNetMaster.h"
 #include "src/eeprom.h"
-#include "src/makeNumber.h"
 #include "src/debounceClass.h"
 #include "src/macros.h"
-#include "src/stateMachineClass.h"
+#include "src/mcp23017.h"
 #include <Wire.h>
 
 const int nInputModules = 4 ; // make me variable in setup.
 const int nInputs = 64 ;
-#define portA	0x12
-#define portB	0x13
-#define iodirRegA	0x00
-#define pullUpRegA	0x0C
-#define mcpAddress  0x20
 
 const int pointsPerStreet = 16 ;
+const int pointInterval = 500 ;
 
 
-enum buttonStates
+enum states
 {
-    getFirstBtn ,
-    getSecondBtn ,
+    idle,
     settingPoints ,
-    teachInStreets ,
-} btnState ;
+    teachinStreet ,
+    teachinPoints,
+} mode ;
 
 Debounce inputs[nInputs] ;
 Debounce controlButton ;
@@ -36,9 +31,10 @@ uint8_t secondButton = 0xFF ;
 uint8_t lastPressedButton = 0xFF ;
 uint8_t prevPressedButton = 0xFF ;
 uint8_t buttonPressed = false ;
-uint8_t controlState ;
+uint8_t controlBtnState ;
 uint8_t lastPressedInput ;
 uint8_t returnCode ;
+uint8_t state ;
 uint16_t street[ pointsPerStreet ] ;
 
 void debounceInputs()
@@ -107,7 +103,7 @@ bool setStreets()
     REPEAT_MS( pointInterval ) ;
     if( street[index] == 0xFFFF )                       // if address == 0xFFFF, we have set the last point
     {
-        quit ;
+        quit :
         index = 0 ;
         return true ;
     }
@@ -141,28 +137,29 @@ void statusLed()
 }
 */
 
+
 /* XPRESSNET EVENT */
 void notifyXNetTrnt(uint16_t Address, uint8_t data)
 {
-    // // uint8_t IO = getIO( Address ) ;          // fetch which IO belongs to this point from EEPROM
-        // mcpWrite( IO + 1, state ) ;                  // than update the LED (the IO behind in the input)
-    updateLed()
+    uint8_t IO = getIO( Address ) ;                             // fetch which IO belongs to this point from EEPROM
+    if( IO < 128) mcpWrite( IO + 1, state ) ;                   // than update the LED (the IO behind in the input)
+
     
     if( state == teachinPoints )            // if we are teaching points we need to store incomming address and state in EEPROM
     {
-        // storePoint( lastPressedButton, Address | (data << 15) ) ;
+        storePoint( lastPressedButton, Address | (data << 15) ) ;
     }
 
     if( state == teachinStreet )    
     {
-        // addDetectorToStreet( Address ) ;
+        if( Address >= detectorAddresses ) addDetectorToStreet( Address ) ;
     }
 }
 
 /* INPUT BUTTON IS PRESSED */
 void inputEvent( uint8_t pinNumber )
 {
-    
+    uint16_t address = getDccAddress( pinNumber ) ;
 }
 
 
@@ -170,13 +167,26 @@ void inputEvent( uint8_t pinNumber )
 /* CONTROL BUTTON IS PRESSED */
 void controlButtonEvent()
 {
-    
+    static uint32_t previousTime = 0 ;
+
+    switch (mode)
+    {
+    case idle:
+        if( controlBtnState == FALLING )                                previousTime = millis() ;
+        if( controlBtnState == LOW && millis() - previousTime >= 1500 ) mode = teachinPoints ;
+        if( controlBtnState == RISING )                                 mode = teachinStreet ;
+        break ;
+
+    case teachinPoints :
+    case teachinStreet :
+        if( controlBtnState == FALLING ) mode = idle ;
+        break ;
+    }
 }
 
 
 void setup()
 {
-    sm.nextState( readButtons, 0 ) ;
     controlButton.begin( 3 ) ; // attach pin number to the control button
     for( int i = 0 ; i <= nInputs ; i ++ ) inputs[i].begin( -1 ) ; // flag that external input is used opposed to digitalRead() 
 }
@@ -186,6 +196,7 @@ void loop()
     debounceInputs() ;
     readButtons() ;
     
+    controlButtonEvent() ;  // handles current mode with the control button
     XpressNet.update() ;
 }
 
