@@ -126,19 +126,36 @@ bool setStreets()
     return false ;
 }
 
+/*
+void statusLed()
+{
+    known modes and errors
+
+  mode/error            green           red
+    idle                on              off
+    teaching points     off             blink 2Hz
+    teaching streets    off             blink 1Hz
+    laying streets      blink 1Hz       off
+    street occupied     off             5 flashes 3Hz
+    street not found    5 flashes 3Hz   off
+}
+*/
 
 /* XPRESSNET EVENT */
 void notifyXNetTrnt(uint16_t Address, uint8_t data)
 {
-    if( sm.getState() == teachinPoints )            // if we are teaching points we need to store incomming address and state in EEPROM
+    // // uint8_t IO = getIO( Address ) ;          // fetch which IO belongs to this point from EEPROM
+        // mcpWrite( IO + 1, state ) ;                  // than update the LED (the IO behind in the input)
+    updateLed()
+    
+    if( state == teachinPoints )            // if we are teaching points we need to store incomming address and state in EEPROM
     {
         // storePoint( lastPressedButton, Address | (data << 15) ) ;
     }
 
-    if( sm.getState() == readButtons )              // if we are in Idle mode, only update LED's, should work for occupance detectors as well as points
+    if( state == teachinStreet )    
     {
-        // uint8_t IO = getIO( Address ) ;          // fetch which IO belongs to this point from EEPROM
-        // mcpWrite( IO + 1, state ) ;                  // than update the LED (the IO behind in the input)
+        // addDetectorToStreet( Address ) ;
     }
 }
 
@@ -173,8 +190,12 @@ void loop()
 }
 
 
+
+void updateLed( uint8_t number )
+{
+}
+
 /*
-void updateLED( uint8_t number )
 void coupleDCCtoNumber( uint16_t dccAddress ,uint8_t lastPressedNumber)
 void addDetectorToStreet( uint16_t detector )
 void addPointToStreet()
